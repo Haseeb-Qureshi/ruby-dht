@@ -7,7 +7,7 @@ class DHTNode
   DB_KEY_REGEX = /\/db\/(.+)/
 
   def initialize
-    @store = { "default" => "this is a default value" }
+    @store = { "default" => "this is a default value", "default2" => "ditto" }
     @uid = nil
   end
 
@@ -90,6 +90,11 @@ class DHTNode
   end
 
   def get_all_keys
+    response = Rack::Response.new
+    response.write(@store.keys)
+    response.status = 200
+
+    response.finish
   end
 
   def get_peers
