@@ -6,17 +6,24 @@ require 'byebug'
 class DHTNode
   DB_KEY_REGEX = /\/db\/(.+)/
 
+  def initialize
+    @store = {}
+    @uid = nil
+  end
+
   def call(env)
     request = Rack::Request.new(env)
-    @uid ||= "#{request.hostname}#{request.port}"
-    # params = request.params
+    @uid ||= "#{request.host}#{request.port}"
+    params = request.params
     method = request.request_method
     body = request.body
     path = request.path
 
     case
     when method == "GET"
-      if path == "/db"
+      if path == "/"
+        say_hello(request)
+      elsif path == "/db"
         get_all_keys
       elsif path =~ DB_KEY_REGEX
         get_key(key: path.scan(DB_KEY_REGEX))
@@ -65,11 +72,12 @@ class DHTNode
   # join_dht => POST 'localhost:3000/dht/join', body => name1:host1:port1 \r\n name2:host2:port2 \r\n name3:host3:port3
 
   def get_key(key:)
+    val = @store[key]
     response = Rack::Response.new
-    response.write('Hello World') # write some content to the body
-    response.status = 202
+    response.write(val)
+    response.status = 200
 
-    response.finish # return the generated triplet
+    response.finish
   end
 
   def get_all_keys
@@ -88,6 +96,26 @@ class DHTNode
   end
 
   def join_network!(network_list:)
+  end
+
+  def say_hello(request)
+    response = Rack::Response.new
+    response.write(<<-STR)
+      Hi there! Welcome to our DHT server. Here's how the API works:
+
+      get_all_keys: => GET '#{request.host}:#{request.port}/db'
+      get_val => GET '#{request.host}:#{request.port}/db/\#{key}'
+
+      set => PUT '#{request.host}:#{request.port}/db/\#{key}', body => \#{val}
+      delete_key => DELETE '#{request.host}:#{request.port}/db/\#{key}'
+
+      peer_list => GET '#{request.host}:#{request.port}/dht/peers'
+
+      join_dht => POST '#{request.host}:#{request.port}/dht/join', body => name1:host1:port1 \\r\\n name2:host2:port2 \\r\\n name3:host3:port3
+      leave_dht => GET '#{request.host}:#{request.port}/dht/leave'
+    STR
+    response.status = 200
+    response.finish
   end
 
   def bad_response
