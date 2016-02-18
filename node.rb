@@ -23,7 +23,7 @@ class DHTNode
   def get_val(key:)
     val = @store[key]
     response = Rack::Response.new
-    response.write(val)
+    response.write(val.to_s + "\n")
     response.status = 200
 
     response.finish
@@ -31,7 +31,7 @@ class DHTNode
 
   def get_all_keys
     response = Rack::Response.new
-    response.write(@store.keys)
+    response.write(@store.keys.to_s + "\n")
     response.status = 200
 
     response.finish
@@ -44,9 +44,27 @@ class DHTNode
   end
 
   def set!(key:, val:)
+    old_val = @store[key]
+    @store[key] = val
+    response = Rack::Response.new
+    response.write("#{key} => #{val}\n")
+    response.status = old_val.nil? ? 201 : 200
+
+    response.finish
   end
 
   def delete!(key:)
+    val = @store.delete(key)
+    response = Rack::Response.new
+    if val.nil?
+      response.write("Key not found.\n")
+      response.status = 404
+      response.finish
+    else
+      response.write("Key #{key} => #{val} deleted.\n")
+      response.status = 200
+      response.finish
+    end
   end
 
   def join_network!(network_list:)

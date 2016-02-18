@@ -16,7 +16,7 @@ class DHTServer
     @node.uid ||= "#{request.host}#{request.port}"
     params = request.params
     method = request.request_method
-    body = request.body
+    body = request.body.read
     path = request.path
 
     case
