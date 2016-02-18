@@ -7,7 +7,7 @@ class DHTNode
   DB_KEY_REGEX = /\/db\/(.+)/
 
   def initialize
-    @store = {}
+    @store = { "default" => "this is a default value" }
     @uid = nil
   end
 
@@ -20,13 +20,15 @@ class DHTNode
     path = request.path
 
     case
+
     when method == "GET"
+
       if path == "/"
         say_hello(request)
       elsif path == "/db"
         get_all_keys
       elsif path =~ DB_KEY_REGEX
-        get_key(key: path.scan(DB_KEY_REGEX))
+        get_val(key: path.scan(DB_KEY_REGEX)[0][0])
       elsif path == "/dht/peers"
         get_peers
       elsif path == "/dht/leave"
@@ -34,24 +36,31 @@ class DHTNode
       else
         bad_response
       end
+
     when method == "PUT"
+
       if path =~ DB_KEY_REGEX
-        set!(key: path.scan(DB_KEY_REGEX), val: body)
+        set!(key: path.scan(DB_KEY_REGEX)[0][0], val: body)
       else
         bad_response
       end
+
     when method == "DELETE"
+
       if path =~ DB_KEY_REGEX
-        delete!(key: path.scan(DB_KEY_REGEX))
+        delete!(key: path.scan(DB_KEY_REGEX)[0][0])
       else
         bad_response
       end
+
     when method == "POST"
+
       if path == "/dht/join"
         join_network!(network_list: body)
       else
         bad_response
       end
+
     else
       bad_response
     end
@@ -71,7 +80,7 @@ class DHTNode
 
   # join_dht => POST 'localhost:3000/dht/join', body => name1:host1:port1 \r\n name2:host2:port2 \r\n name3:host3:port3
 
-  def get_key(key:)
+  def get_val(key:)
     val = @store[key]
     response = Rack::Response.new
     response.write(val)
@@ -101,7 +110,7 @@ class DHTNode
   def say_hello(request)
     response = Rack::Response.new
     response.write(<<-STR)
-      Hi there! Welcome to our DHT server. Here's how the API works:
+      Hi there! Welcome to my DHT server. Here's how the API works:
 
       get_all_keys: => GET '#{request.host}:#{request.port}/db'
       get_val => GET '#{request.host}:#{request.port}/db/\#{key}'
