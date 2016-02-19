@@ -30,9 +30,9 @@ class DHTServer
         self.class.say_hello(request)
       elsif path == "/db"
         @node.get_local_keys
-      elsif path == "/dht/keyspace"
+      elsif path == "/dht/keyspace" && params.empty?
         @node.get_all_keys_in_network
-      elsif path =~ /\dht\/keyspace\/.+/
+      elsif path == "/dht/keyspace"
         lower = Integer(params["lower_bound"])
         upper = Integer(params["upper_bound"])
         @node.get_keyspace(lower_bound: lower, upper_bound: upper)

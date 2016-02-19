@@ -9,9 +9,9 @@ class DHTNode
 
   #       0
   #     /¯^¯\
-  # 375|<   >| 125
-  #     \_v_/
-  #      250
+  # 375|<   >| 125  each key maps to predecessor in keyspace
+  #     \_v_/       e.g., if a node lives at 375
+  #      250              then 378 => node(375)
 
   def initialize
     @store = {}
@@ -115,11 +115,8 @@ class DHTNode
   end
 
   def join_network!(peers_list:)
-    puts "adding to peers lists!"
     add_to_peers_list!(peers_list: peers_list)
-    puts "informing peers!"
     inform_peers!(:joined)
-    puts "getting keys!"
     get_keys_from_keyspace!
 
     @response.write("Network list initialized, current peers informed, and keys retrieved.")
@@ -146,9 +143,10 @@ class DHTNode
   def remove_peer!(peer:)
     peer_hash = hash(peer)
     if @peers.has_key?(peer_hash)
-      if predecessor(peer_hash) == hash(@address)
-        get_keyspace(peer_hash)
+      if predecessor(peer_hash)[1] == @address
+        get_keys_from_keyspace!
       end
+
       @peers.delete(peer_hash)
       @response.write("Peer removed.")
       @response.status = 200
@@ -162,14 +160,10 @@ class DHTNode
   def get_keys_from_keyspace! # if a peer is added, it must ask its preceding peer for its new chunk of keyspace
     preceding_peer, succeeding_peer = predecessor(@address), successor(@address)
     upper_bound = succeeding_peer[0]
-    lower_bound = preceding_peer[0]
-    p @peers
-    byebug
+    lower_bound = hash(@address)
     uri = "http://#{preceding_peer[1]}/dht/keyspace" +
           "?lower_bound=#{lower_bound}&upper_bound=#{upper_bound}"
-    puts "Uri constructed: #{uri}"
-    pairs = HTTParty.get(uri).body.split!("&").map! { |pair| pair.split("=") }
-    puts "Pairs returned!"
+    pairs = HTTParty.get(uri).body.strip.split("&").map! { |pair| pair.split("=") }
     pairs.each { |k, v| @store[k] = v }
   end
 
@@ -177,7 +171,6 @@ class DHTNode
     # this has to be O(n) in the number of keys in this node because we have to hash all of them to search the range of the keyspace
     # unless we store them in a BST?
     # maybe we keep both a BST and a hash table for O(lg n) insert and delete, O(1) get, and O(lg n + r) for return range?
-    puts "Returning keyspace!"
     key_subspace = []
     @store.each do |k, v|
       if lower_bound < upper_bound
@@ -191,9 +184,9 @@ class DHTNode
       end
     end
 
-    puts "Writing stuff now!"
     @response.write(key_subspace.map { |pair| pair.join("=") }.join("&"))
     @response.status = 200
+    close_response!
   end
 
   def debug
@@ -215,7 +208,7 @@ class DHTNode
   def route_to_node!(routing_address, method, options)
     raise "Tried to route to self!" if routing_address == @address
 
-    puts "Routing to: #{routing_address} so I can: #{method}"
+    # puts "Routing to: #{routing_address} so I can: #{method}"
 
     key = options[:key]
     key_url = "http://#{routing_address}/db/#{key}"
@@ -241,7 +234,7 @@ class DHTNode
       end
     elsif action == :departed
       fn = lambda do |peer_address|
-        uri = "http://#{peer_address}/dht/peers/#{hash(@address)}"
+        uri = "http://#{peer_address}/dht/peers/#{@address}"
         HTTParty.delete(uri)
       end
     else
