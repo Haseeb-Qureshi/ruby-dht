@@ -25,17 +25,17 @@ class DHTNode
   end
 
   def get_all_keys_in_network
-    keys = []
+    keys = {}
     @peers.each do |_, peer_address|
       next if peer_address == @address
 
       uri = "http://#{peer_address}/db"
       peer_keys = HTTParty.get(uri).body.strip!
-      keys << peer_keys.split("\r\n") unless peer_keys.empty?
+      keys[peer_address] = peer_keys.split("\r\n") unless peer_keys.empty?
     end
-    keys << @store.keys
+    keys[@address] = @store.keys
 
-    @response.write(keys.flatten!)
+    @response.write(keys.inspect)
     @response.status = 200
     close_response!
   end
@@ -115,8 +115,11 @@ class DHTNode
   end
 
   def join_network!(peers_list:)
+    puts "adding to peers lists!"
     add_to_peers_list!(peers_list: peers_list)
+    puts "informing peers!"
     inform_peers!(:joined)
+    puts "getting keys!"
     get_keys_from_keyspace!
 
     @response.write("Network list initialized, current peers informed, and keys retrieved.")
@@ -160,9 +163,13 @@ class DHTNode
     preceding_peer, succeeding_peer = predecessor(@address), successor(@address)
     upper_bound = succeeding_peer[0]
     lower_bound = preceding_peer[0]
+    p @peers
+    byebug
     uri = "http://#{preceding_peer[1]}/dht/keyspace" +
           "?lower_bound=#{lower_bound}&upper_bound=#{upper_bound}"
+    puts "Uri constructed: #{uri}"
     pairs = HTTParty.get(uri).body.split!("&").map! { |pair| pair.split("=") }
+    puts "Pairs returned!"
     pairs.each { |k, v| @store[k] = v }
   end
 
@@ -170,6 +177,7 @@ class DHTNode
     # this has to be O(n) in the number of keys in this node because we have to hash all of them to search the range of the keyspace
     # unless we store them in a BST?
     # maybe we keep both a BST and a hash table for O(lg n) insert and delete, O(1) get, and O(lg n + r) for return range?
+    puts "Returning keyspace!"
     key_subspace = []
     @store.each do |k, v|
       if lower_bound < upper_bound
@@ -183,6 +191,7 @@ class DHTNode
       end
     end
 
+    puts "Writing stuff now!"
     @response.write(key_subspace.map { |pair| pair.join("=") }.join("&"))
     @response.status = 200
   end
@@ -256,11 +265,11 @@ class DHTNode
   end
 
   def predecessor(key)
-    @peers.upper_bound(hash(key)) || @peers.last # wrap back around if no preceding peer
+    @peers.upper_bound(hash(key) - 1) || @peers.last # wrap back around if no preceding peer
   end
 
   def successor(key)
-    @peers.lower_bound(hash(key)) || @peers.first
+    @peers.lower_bound(hash(key) + 1) || @peers.first
   end
 
   def hash(key)

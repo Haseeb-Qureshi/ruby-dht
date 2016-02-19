@@ -35,7 +35,7 @@ class DHTServer
       elsif path =~ /\dht\/keyspace\/.+/
         lower = Integer(params["lower_bound"])
         upper = Integer(params["upper_bound"])
-        @node.get_keyspace(lower_bound: lower, upper_bound: upper))
+        @node.get_keyspace(lower_bound: lower, upper_bound: upper)
       elsif path =~ DB_KEY_REGEX
         @node.get_val(key: path.scan(DB_KEY_REGEX)[0][0])
       elsif path == "/dht/peers"
