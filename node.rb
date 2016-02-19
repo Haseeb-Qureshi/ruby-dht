@@ -27,8 +27,11 @@ class DHTNode
   def get_all_keys_in_network
     keys = []
     @peers.each do |_, peer_address|
+      next if peer_address == @address
+      
       uri = "http://#{peer_address}/db"
-      keys << HTTParty.get(uri).strip.split("\r\n")
+      peer_keys = HTTParty.get(uri).body.strip!
+      @store << peer_keys.split("\r\n") unless peer_keys.empty?
     end
     keys << @store.keys
 
@@ -45,8 +48,13 @@ class DHTNode
       val = route_to_node!(routing_address, :get, key: key)
     end
 
-    @response.write(val.to_s + "\n")
-    @response.status = 200
+    if val.nil?
+      @response.write("Key not found.\n")
+      @response.status = 404
+    else
+      @response.write(val.to_s + "\n")
+      @response.status = 200
+    end
     @response.finish
   end
 
@@ -223,6 +231,6 @@ class DHTNode
   end
 
   def hash(key)
-    Zlib.crc32(key) % KEY_SPACE # Ruby's Object#hash uses Murmurhash, outputs integers
+    Zlib.crc32(key) % KEY_SPACE
   end
 end
