@@ -18,9 +18,9 @@ class DHTNode
     @setup_complete = false
   end
 
-  def setup!(request)
-    @address ||= "#{request.host}:#{request.port}"
-    @peers = RBTree[hash(@address), @address] # keep track of all peers in a Red-Black Tree
+  def finish_setup!(request)
+    @address = "#{request.host}:#{request.port}"
+    @peers = RBTree[hash(@address), @address] # keep track of keyspace in a Red-Black tree
     @setup_complete = true
   end
 
@@ -28,20 +28,21 @@ class DHTNode
     keys = []
     @peers.each do |_, peer_address|
       next if peer_address == @address
-      
+
       uri = "http://#{peer_address}/db"
       peer_keys = HTTParty.get(uri).body.strip!
-      @store << peer_keys.split("\r\n") unless peer_keys.empty?
+      byebug
+      keys << peer_keys.split("\r\n") unless peer_keys.empty?
     end
     keys << @store.keys
 
     @response.write(keys.flatten!)
     @response.status = 200
-    @response.finish
+    close_response!
   end
 
   def get_val(key:)
-    routing_address = closest_peer(key)[1]
+    routing_address = predecessor(key)[1]
     if routing_address == @address
       val = @store[key]
     else
@@ -49,29 +50,29 @@ class DHTNode
     end
 
     if val.nil?
-      @response.write("Key not found.\n")
+      @response.write("Key not found.")
       @response.status = 404
     else
-      @response.write(val.to_s + "\n")
+      @response.write(val)
       @response.status = 200
     end
-    @response.finish
+    close_response!
   end
 
   def get_local_keys
-    @response.write(@store.keys.join("\r\n") + "\n")
+    @response.write(@store.keys.join("\r\n"))
     @response.status = 200
-    @response.finish
+    close_response!
   end
 
   def get_peers
-    @response.write(@peers.to_a.map(&:first).join("\r\n") + "\n")
+    @response.write(@peers.to_a.map(&:first).join("\r\n"))
     @response.status = 200
-    @response.finish
+    close_response!
   end
 
   def set!(key:, val:)
-    routing_address = closest_peer(key)[1]
+    routing_address = predecessor(key)[1]
     if routing_address == @address
       old_val = @store[key]
       @store[key] = val
@@ -79,13 +80,13 @@ class DHTNode
       old_val = route_to_node!(routing_address, :set, key: key, val: val)
     end
 
-    @response.write("#{key} => #{val}\n")
+    @response.write("#{key} => #{val}")
     @response.status = old_val.nil? ? 200 : 201
-    @response.finish
+    close_response!
   end
 
   def delete!(key:)
-    routing_address = closest_peer(key)[1]
+    routing_address = predecessor(key)[1]
 
     if routing_address == @address
       val = @store.delete(key)
@@ -94,68 +95,76 @@ class DHTNode
     end
 
     if val.nil?
-      @response.write("Key not found.\n")
+      @response.write("Key not found.")
       @response.status = 404
-      @response.finish
+      close_response!
     else
-      @response.write("Key #{key} => #{val} deleted.\n")
+      @response.write("Key #{key} => #{val} deleted.")
       @response.status = 200
-      @response.finish
+      close_response!
     end
   end
 
   def initialize_network!(peers_list:)
     add_to_peers_list!(peers_list: peers_list, initialize_all: true)
 
-    @response.write("Network list initialized.\n")
+    initialize_debug_pairs! # TODO: remove this debug setup
+
+    @response.write("Network list initialized.")
     @response.status = 201
-    @response.finish
+    close_response!
   end
 
   def join_network!(peers_list:)
     add_to_peers_list!(peers_list: peers_list)
     inform_peers!(:joined)
 
-    @response.write("Network list initialized and current peers informed.\n")
+    @response.write("Network list initialized and current peers informed.")
     @response.status = 201
-    @response.finish
+    close_response!
   end
 
   def leave_network!
     inform_peers!(:departed)
 
-    @response.write("Left network.\n")
+    @response.write("Left network.")
     @response.status = 200
-    @response.finish
+    close_response!
   end
 
   def add_peers!(peers_list:)
     add_to_peers_list!(peers_list: peers_list)
 
-    @response.write("Peer(s) added.\n")
+    @response.write("Peer(s) added.")
     @response.status = 201
-    @response.finish
+    close_response!
   end
 
-  def remove_peer!(peer_hash:)
+  def remove_peer!(peer:)
+    peer_hash = hash(peer)
     if @peers.has_key?(peer_hash)
+      if predecessor(peer_hash) == hash(@address)
+        get_keyspace(peer_hash)
+      end
       @peers.delete(peer_hash)
-      @response.write("Peer removed.\n")
+      @response.write("Peer removed.")
       @response.status = 200
-      @response.finish
     else
-      @response.write("Peer is not in network.\n")
+      @response.write("Peer is not in network.")
       @response.status = 404
-      @response.finish
     end
+    close_response!
   end
 
-  def get_keyspace
-    raise "Not yet implemented" # if a peer is added, it must receive its chunk of the preceding keyspace
+  def get_keyspace(upper_bound:, lower_bound:, peer:)
+    raise "Not yet implemented" # if a peer is added, it must ask its preceding peer for its new chunk of keyspace
   end
 
-  def give_keyspace
-    raise "Not yet implemented"
+  def give_keyspace(upper_bound:, lower_bound:)
+    raise "Not yet implemented" # this just returns that chunk of the keyspace
+    # this has to be O(n) in the number of keys in this node because we have to hash all of them to construct the range in the keyspace
+    # unless we store them in a BST?
+    # maybe we keep both a BST and a hash table for O(lg n) insert and delete, O(1) get, and O(lg n + r) for return range?
   end
 
   def debug
@@ -226,11 +235,47 @@ class DHTNode
     peers_list.split("&&")
   end
 
-  def closest_peer(key)
+  def predecessor(key)
     @peers.upper_bound(hash(key)) || @peers.last # wrap back around if no preceding peer
+  end
+
+  def successor(key)
+    @peers.lower_bound(hash(key)) || @peers.first
   end
 
   def hash(key)
     Zlib.crc32(key) % KEY_SPACE
+  end
+
+  def close_response!
+    @response.write("\n")
+    @response.finish
+  end
+
+  def initialize_debug_pairs!
+    [
+      "hello world",
+      "loony tunes",
+      "baby girl",
+      "roller coaster",
+      "flip kick",
+      "santa claus",
+      "turkey trot",
+      "wise words",
+      "killer whale",
+      "ninja turtle",
+      "real talk",
+      "planned parenthood",
+      "flight simulator",
+      "mind reader",
+      "tarot card",
+      "leather couch",
+      "finish line",
+      "circus act",
+      "clown around",
+      "sand dune"
+    ].map(&:split).each { |k, v| set!(key: k, val: v) }
+
+    @response = Rack::Response.new
   end
 end

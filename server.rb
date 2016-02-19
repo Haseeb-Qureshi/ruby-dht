@@ -14,7 +14,7 @@ class DHTServer
 
   def call(env)
     request = Rack::Request.new(env)
-    @node.setup!(request) unless @node.setup_complete
+    @node.finish_setup!(request) unless @node.setup_complete
 
     params = request.params
     method = request.request_method
@@ -30,7 +30,7 @@ class DHTServer
         self.class.say_hello(request)
       elsif path == "/db"
         @node.get_local_keys
-      elsif path == "/db/all"
+      elsif path == "/dht/all"
         @node.get_all_keys_in_network
       elsif path =~ DB_KEY_REGEX
         @node.get_val(key: path.scan(DB_KEY_REGEX)[0][0])
@@ -57,8 +57,7 @@ class DHTServer
       if path =~ DB_KEY_REGEX
         @node.delete!(key: path.scan(DB_KEY_REGEX)[0][0])
       elsif path =~ REMOVE_PEER_REGEX # TODO: add auth token in header
-        peer_address = path.scan(REMOVE_PEER_REGEX)[0][0]
-        @node.remove_peer!(peer_hash: peer_hash)
+        @node.remove_peer!(peer: path.scan(REMOVE_PEER_REGEX)[0][0])
       else
         self.class.bad_response
       end
@@ -92,15 +91,17 @@ class DHTServer
     response.write(<<-STR)
       Hi there! Welcome to my DHT server. Here's how the public API works:
 
+      initialize_dht => POST '#{request.host}:#{request.port}/dht/initialize', body => host1:port1&&host2:port2&&host3:port3
+
       get_local_keys: => GET '#{request.host}:#{request.port}/db'
       get_val => GET '#{request.host}:#{request.port}/db/\#{key}'
+      get_all_keys: => GET '#{request.host}:#{request.port}/dht/all'
 
       set => PUT '#{request.host}:#{request.port}/db/\#{key}', body => \#{val}
       delete_key => DELETE '#{request.host}:#{request.port}/db/\#{key}'
 
       peer_list => GET '#{request.host}:#{request.port}/dht/peers'
 
-      initialize_dht => POST '#{request.host}:#{request.port}/dht/initialize', body => host1:port1&&host2:port2&&host3:port3
       join_dht => POST '#{request.host}:#{request.port}/dht/join', body => host1:port1&&host2:port2&&host3:port3
       leave_dht => GET '#{request.host}:#{request.port}/dht/leave'\n
     STR
