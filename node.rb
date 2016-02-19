@@ -31,7 +31,6 @@ class DHTNode
 
       uri = "http://#{peer_address}/db"
       peer_keys = HTTParty.get(uri).body.strip!
-      byebug
       keys << peer_keys.split("\r\n") unless peer_keys.empty?
     end
     keys << @store.keys
@@ -118,8 +117,9 @@ class DHTNode
   def join_network!(peers_list:)
     add_to_peers_list!(peers_list: peers_list)
     inform_peers!(:joined)
+    get_keys_from_keyspace!
 
-    @response.write("Network list initialized and current peers informed.")
+    @response.write("Network list initialized, current peers informed, and keys retrieved.")
     @response.status = 201
     close_response!
   end
@@ -156,15 +156,35 @@ class DHTNode
     close_response!
   end
 
-  def get_keyspace(upper_bound:, lower_bound:, peer:)
-    raise "Not yet implemented" # if a peer is added, it must ask its preceding peer for its new chunk of keyspace
+  def get_keys_from_keyspace! # if a peer is added, it must ask its preceding peer for its new chunk of keyspace
+    preceding_peer, succeeding_peer = predecessor(@address), successor(@address)
+    upper_bound = succeeding_peer[0]
+    lower_bound = preceding_peer[0]
+    uri = "http://#{preceding_peer[1]}/dht/keyspace" +
+          "?lower_bound=#{lower_bound}&upper_bound=#{upper_bound}"
+    pairs = HTTParty.get(uri).body.split!("&").map! { |pair| pair.split("=") }
+    pairs.each { |k, v| @store[k] = v }
   end
 
-  def give_keyspace(upper_bound:, lower_bound:)
-    raise "Not yet implemented" # this just returns that chunk of the keyspace
-    # this has to be O(n) in the number of keys in this node because we have to hash all of them to construct the range in the keyspace
+  def get_keyspace(lower_bound:, upper_bound:) # returns a chunk of the keyspace
+    # this has to be O(n) in the number of keys in this node because we have to hash all of them to search the range of the keyspace
     # unless we store them in a BST?
     # maybe we keep both a BST and a hash table for O(lg n) insert and delete, O(1) get, and O(lg n + r) for return range?
+    key_subspace = []
+    @store.each do |k, v|
+      if lower_bound < upper_bound
+        if hash(k).between?(lower_bound, upper_bound)
+          key_subspace << [k, v]
+        end
+      else # wraps around
+        if hash(k).between?(lower_bound, KEY_SPACE) || hash(k).between(0, upper_bound)
+          key_subspace << [k, v]
+        end
+      end
+    end
+
+    @response.write(key_subspace.map { |pair| pair.join("=") }.join("&"))
+    @response.status = 200
   end
 
   def debug

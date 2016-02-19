@@ -30,8 +30,12 @@ class DHTServer
         self.class.say_hello(request)
       elsif path == "/db"
         @node.get_local_keys
-      elsif path == "/dht/all"
+      elsif path == "/dht/keyspace"
         @node.get_all_keys_in_network
+      elsif path =~ /\dht\/keyspace\/.+/
+        lower = Integer(params["lower_bound"])
+        upper = Integer(params["upper_bound"])
+        @node.get_keyspace(lower_bound: lower, upper_bound: upper))
       elsif path =~ DB_KEY_REGEX
         @node.get_val(key: path.scan(DB_KEY_REGEX)[0][0])
       elsif path == "/dht/peers"
@@ -95,7 +99,7 @@ class DHTServer
 
       get_local_keys: => GET '#{request.host}:#{request.port}/db'
       get_val => GET '#{request.host}:#{request.port}/db/\#{key}'
-      get_all_keys: => GET '#{request.host}:#{request.port}/dht/all'
+      get_all_keys: => GET '#{request.host}:#{request.port}/dht/keyspace'
 
       set => PUT '#{request.host}:#{request.port}/db/\#{key}', body => \#{val}
       delete_key => DELETE '#{request.host}:#{request.port}/db/\#{key}'
