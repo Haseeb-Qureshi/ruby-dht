@@ -60,7 +60,7 @@ class DHTServer
 
       if path =~ DB_KEY_REGEX
         @node.delete!(key: path.scan(DB_KEY_REGEX)[0][0])
-      elsif path =~ REMOVE_PEER_REGEX # TODO: add auth token in header
+      elsif path =~ REMOVE_PEER_REGEX
         @node.remove_peer!(peer: path.scan(REMOVE_PEER_REGEX)[0][0])
       else
         self.class.bad_response
@@ -72,7 +72,7 @@ class DHTServer
         @node.initialize_network!(peers_list: body)
       elsif path == "/dht/join"
         @node.join_network!(peers_list: body)
-      elsif path == "/dht/peers" # TODO: add auth token in header
+      elsif path == "/dht/peers"
         @node.add_peers!(peers_list: body)
       else
         self.class.bad_response
@@ -114,8 +114,6 @@ class DHTServer
     response.finish
   end
 end
-
-# "localhost:8000\r\nlocalhost:8001"
 
 port_offset = 0
 begin

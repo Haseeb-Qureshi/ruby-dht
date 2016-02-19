@@ -15,3 +15,4 @@ in Ruby.
 * Quorums? Eventual consistency?
 * Periodically ping peers to detect failed nodes?
   * Reshuffle keys
+* Add auth token for private API endpoints
