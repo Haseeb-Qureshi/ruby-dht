@@ -87,7 +87,7 @@ class DHTNode
   end
 
   def initialize_network!(peers_list:)
-    add_peers!(peers_list: peers_list, initialize_all: true)
+    add_to_peers_list!(peers_list: peers_list, initialize_all: true)
 
     @response.write("Network list initialized.\n")
     @response.status = 201
@@ -95,7 +95,7 @@ class DHTNode
   end
 
   def join_network!(peers_list:)
-    add_peers!(peers_list: peers_list)
+    add_to_peers_list!(peers_list: peers_list)
     inform_peers!(:joined)
 
     @response.write("Network list initialized and current peers informed.\n")
@@ -112,7 +112,7 @@ class DHTNode
   end
 
   def add_peers!(peers_list:)
-    add_peers!(peers_list)
+    add_to_peers_list!(peers_list: peers_list)
 
     @response.write("Peer(s) added.\n")
     @response.status = 201
@@ -146,7 +146,7 @@ class DHTNode
 
   private
 
-  def add_peers!(peers_list:, initialize_all: false)
+  def add_to_peers_list!(peers_list:, initialize_all: false)
     self.class.parse_peer_list(peers_list).each do |peer_address|
       next if peer_address == @address
       initialize_peers_network!(peer_address, peers_list) if initialize_all
