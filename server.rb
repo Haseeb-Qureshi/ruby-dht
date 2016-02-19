@@ -51,8 +51,9 @@ class DHTServer
 
       if path =~ DB_KEY_REGEX
         @node.delete!(key: path.scan(DB_KEY_REGEX)[0][0])
-      elsif path == "/dht/remove_peer" # TODO: add auth token in header
-        @node.remove_peer!(peer_address: body)
+      elsif path =~ /\/dht\/remove_peer\/(.+)/ # TODO: add auth token in header
+        peer_address = path.scan(/\/dht\/remove_peer\/(.+)/)[0][0]
+        @node.remove_peer!(peer_hash: peer_hash)
       else
         self.class.bad_response
       end
@@ -61,7 +62,7 @@ class DHTServer
 
       if path == "/dht/join"
         @node.initialize_network!(network_list: body)
-      elsif path == "/dht/add_peer" # TODO: add auth token in header
+      elsif path == "/dht/peers" # TODO: add auth token in header
         @node.add_peer!(peer_address: body)
       else
         self.class.bad_response

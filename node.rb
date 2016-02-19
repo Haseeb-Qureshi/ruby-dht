@@ -66,9 +66,6 @@ class DHTNode
     response.finish
   end
 
-  def leave_network!
-  end
-
   def set!(key:, val:)
     routing_address = closest_peer(key)[1]
     if routing_address == @address
@@ -115,6 +112,15 @@ class DHTNode
     response.finish
   end
 
+  def leave_network!
+    inform_peers!(:departed)
+
+    response = Rack::Response.new
+    response.write("Left network.\n")
+    response.status = 200
+    response.finish
+  end
+
   def add_peer!(peer_address:)
     initialize_peers!([peer_address])
 
@@ -124,11 +130,11 @@ class DHTNode
     response.finish
   end
 
-  def remove_peer!(peer_address:)
+  def remove_peer!(peer_hash:)
     response = Rack::Response.new
 
-    if @peers[hash(peer_address)] == peer_address
-      @peers.delete(hash(peer_address))
+    if @peers.has_key?(peer_hash)
+      @peers.delete(peer_hash)
       response.write("Peer removed.\n")
       response.status = 200
       response.finish
@@ -149,12 +155,19 @@ class DHTNode
 
   private
 
+  def initialize_peers!(peers)
+    peers.each do |peer_address|
+      next if peer_address == @address
+      raise "Hash collision? or already initialized?" if @peers.has_key?(hash(peer_address))
+      @peers[hash(peer_address)] = peer_address
+    end
+  end
+
   def route_to_node!(routing_address, method, options)
     raise "Tried to route to self!" if routing_address == @address
 
     key = options[:key]
     key_url = "http://#{routing_address}/db/#{key}"
-
     case method
     when :get
       HTTParty.get(key_url)
@@ -169,12 +182,22 @@ class DHTNode
     end
   end
 
-  def initialize_peers!(peers)
-    peers.each do |peer_address|
-      next if peer_address == @address
-      raise "Hash collision? or already initialized?" if @peers.has_key?(hash(peer_address))
-      @peers[hash(peer_address)] = peer_address
+  def inform_peers!(action)
+    if action == :joined
+      fn = lambda do |peer_address|
+        uri = "http://#{peer_address}/dht/peers"
+        HTTParty.post(uri, body: @address)
+      end
+    elsif action == :departed
+      fn = lambda do |peer_address|
+        uri = "http://#{peer_address}/dht/peers/#{hash(@address)}"
+        HTTParty.delete(uri)
+      end
+    else
+      raise "Invalid action"
     end
+
+    peers.each { |_, peer_address| fn.call(peer_address) }
   end
 
   def self.format_network_list(network_list)
