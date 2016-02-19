@@ -3,13 +3,14 @@ require 'httparty'
 
 class DHTNode
   attr_reader :setup_complete
-  KEY_SPACE = 40
+  attr_accessor :response
+  KEY_SPACE = 500
 
   #       0
   #     /¯^¯\
-  # 30 |<   >| 10
+  # 375|<   >| 125
   #     \_v_/
-  #      20
+  #      250
 
   def initialize
     @store = {}
@@ -21,18 +22,6 @@ class DHTNode
     @peers = RBTree[hash(@address), @address] # keep track of all peers in a Red-Black Tree
     @setup_complete = true
   end
-
-  # API:
-  # get_local_keys: => GET 'localhost:3000/db'
-  # get_val => GET 'localhost:3000/db/#{key}'
-  # peer_list => GET 'localhost:3000/dht/peers'
-  # leave_dht => GET 'localhost:3000/dht/leave'
-
-  # set => PUT 'localhost:3000/db/#{key}', body => #{val}
-
-  # delete_key => DELETE 'localhost:3000/db/#{key}'
-
-  # join_dht => POST 'localhost:3000/dht/join', body => name1:host1:port1 \r\n name2:host2:port2 \r\n name3:host3:port3
 
   def get_all_in_network
     raise "Not yet implemented"
@@ -46,24 +35,21 @@ class DHTNode
       val = route_to_node!(routing_address, :get, key: key)
     end
 
-    response = Rack::Response.new
-    response.write(val.to_s + "\n")
-    response.status = 200
-    response.finish
+    @response.write(val.to_s + "\n")
+    @response.status = 200
+    @response.finish
   end
 
   def get_local_keys
-    response = Rack::Response.new
-    response.write(@store.keys.join("\r\n") + "\n")
-    response.status = 200
-    response.finish
+    @response.write(@store.keys.join("\r\n") + "\n")
+    @response.status = 200
+    @response.finish
   end
 
   def get_peers
-    response = Rack::Response.new
-    response.write(@peers.to_a.map(&:last).join("\r\n") + "\n")
-    response.status = 200
-    response.finish
+    @response.write(@peers.to_a.map(&:last).join("\r\n") + "\n")
+    @response.status = 200
+    @response.finish
   end
 
   def set!(key:, val:)
@@ -75,10 +61,9 @@ class DHTNode
       old_val = route_to_node!(routing_address, :set, key: key, val: val)
     end
 
-    response = Rack::Response.new
-    response.write("#{key} => #{val}\n")
-    response.status = old_val.nil? ? 200 : 201
-    response.finish
+    @response.write("#{key} => #{val}\n")
+    @response.status = old_val.nil? ? 200 : 201
+    @response.finish
   end
 
   def delete!(key:)
@@ -90,63 +75,69 @@ class DHTNode
       val = route_to_node!(routing_address, :delete, key: key)
     end
 
-    response = Rack::Response.new
     if val.nil?
-      response.write("Key not found.\n")
-      response.status = 404
-      response.finish
+      @response.write("Key not found.\n")
+      @response.status = 404
+      @response.finish
     else
-      response.write("Key #{key} => #{val} deleted.\n")
-      response.status = 200
-      response.finish
+      @response.write("Key #{key} => #{val} deleted.\n")
+      @response.status = 200
+      @response.finish
     end
   end
 
-  def initialize_network!(network_list:)
-    initialize_peers!(self.class.format_network_list(network_list))
+  def initialize_network!(peers_list:)
+    add_peers!(peers_list: peers_list, initialize_all: true)
+
+    @response.write("Network list initialized.\n")
+    @response.status = 201
+    @response.finish
+  end
+
+  def join_network!(peers_list:)
+    add_peers!(peers_list: peers_list)
     inform_peers!(:joined)
 
-    response = Rack::Response.new
-    response.write("Network list initialized.\n")
-    response.status = 201
-    response.finish
+    @response.write("Network list initialized and current peers informed.\n")
+    @response.status = 201
+    @response.finish
   end
 
   def leave_network!
     inform_peers!(:departed)
 
-    response = Rack::Response.new
-    response.write("Left network.\n")
-    response.status = 200
-    response.finish
+    @response.write("Left network.\n")
+    @response.status = 200
+    @response.finish
   end
 
-  def add_peer!(peer_address:)
-    initialize_peers!([peer_address])
+  def add_peers!(peers_list:)
+    add_peers!(peers_list)
 
-    response = Rack::Response.new
-    response.write("Peer added.\n")
-    response.status = 201
-    response.finish
+    @response.write("Peer(s) added.\n")
+    @response.status = 201
+    @response.finish
   end
 
   def remove_peer!(peer_hash:)
-    response = Rack::Response.new
-
     if @peers.has_key?(peer_hash)
       @peers.delete(peer_hash)
-      response.write("Peer removed.\n")
-      response.status = 200
-      response.finish
+      @response.write("Peer removed.\n")
+      @response.status = 200
+      @response.finish
     else
-      response.write("Peer is not in network.\n")
-      response.status = 404
-      response.finish
+      @response.write("Peer is not in network.\n")
+      @response.status = 404
+      @response.finish
     end
   end
 
   def get_keyspace
     raise "Not yet implemented" # if a peer is added, it must receive its chunk of the preceding keyspace
+  end
+
+  def give_keyspace
+    raise "Not yet implemented"
   end
 
   def debug
@@ -155,9 +146,11 @@ class DHTNode
 
   private
 
-  def initialize_peers!(peers)
-    peers.each do |peer_address|
+  def add_peers!(peers_list:, initialize_all: false)
+    self.class.parse_peer_list(peers_list).each do |peer_address|
       next if peer_address == @address
+      initialize_peers_network!(peer_address, peers_list) if initialize_all
+
       raise "Hash collision? or already initialized?" if @peers.has_key?(hash(peer_address))
       @peers[hash(peer_address)] = peer_address
     end
@@ -197,11 +190,20 @@ class DHTNode
       raise "Invalid action"
     end
 
-    peers.each { |_, peer_address| fn.call(peer_address) }
+    @peers.each do |_, peer_address|
+      next if peer_address == @address
+      fn.call(peer_address)
+    end
   end
 
-  def self.format_network_list(network_list)
-    network_list.split("&&")
+  def initialize_peers_network!(peer_address, peers_list)
+    raise "Initializing self!" if peer_address == @address
+    uri = "http://#{peer_address}/dht/peers"
+    HTTParty.post(uri, body: peers_list)
+  end
+
+  def self.parse_peer_list(peers_list)
+    peers_list.split("&&")
   end
 
   def closest_peer(key)
@@ -209,6 +211,6 @@ class DHTNode
   end
 
   def hash(key)
-    key.hash % KEY_SPACE # .hash uses Murmurhash, outputs integers
+    key.hash % KEY_SPACE # Ruby's Object#hash uses Murmurhash, outputs integers
   end
 end

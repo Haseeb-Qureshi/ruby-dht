@@ -6,6 +6,7 @@ require_relative 'node'
 
 class DHTServer
   DB_KEY_REGEX = /\/db\/(.+)/
+  REMOVE_PEER_REGEX = /\/dht\/remove_peer\/(.+)/
 
   def initialize
     @node = DHTNode.new
@@ -14,10 +15,12 @@ class DHTServer
   def call(env)
     request = Rack::Request.new(env)
     @node.setup!(request) unless @node.setup_complete
+
     params = request.params
     method = request.request_method
     body = request.body.read
     path = request.path
+    @node.response = Rack::Response.new
 
     case
 
@@ -51,8 +54,8 @@ class DHTServer
 
       if path =~ DB_KEY_REGEX
         @node.delete!(key: path.scan(DB_KEY_REGEX)[0][0])
-      elsif path =~ /\/dht\/remove_peer\/(.+)/ # TODO: add auth token in header
-        peer_address = path.scan(/\/dht\/remove_peer\/(.+)/)[0][0]
+      elsif path =~ REMOVE_PEER_REGEX # TODO: add auth token in header
+        peer_address = path.scan(REMOVE_PEER_REGEX)[0][0]
         @node.remove_peer!(peer_hash: peer_hash)
       else
         self.class.bad_response
@@ -60,10 +63,12 @@ class DHTServer
 
     when method == "POST"
 
-      if path == "/dht/join"
-        @node.initialize_network!(network_list: body)
+      if path == "/dht/initialize"
+        @node.initialize_network!(peers_list: body)
+      elsif path == "/dht/join"
+        @node.join_network!(peers_list: body)
       elsif path == "/dht/peers" # TODO: add auth token in header
-        @node.add_peer!(peer_address: body)
+        @node.add_peers!(peers_list: body)
       else
         self.class.bad_response
       end
@@ -93,6 +98,7 @@ class DHTServer
 
       peer_list => GET '#{request.host}:#{request.port}/dht/peers'
 
+      initialize_dht => POST '#{request.host}:#{request.port}/dht/initialize', body => host1:port1&&host2:port2&&host3:port3
       join_dht => POST '#{request.host}:#{request.port}/dht/join', body => host1:port1&&host2:port2&&host3:port3
       leave_dht => GET '#{request.host}:#{request.port}/dht/leave'\n
     STR
