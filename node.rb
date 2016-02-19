@@ -157,16 +157,6 @@ class DHTNode
     close_response!
   end
 
-  def get_keys_from_keyspace! # if a peer is added, it must ask its preceding peer for its new chunk of keyspace
-    preceding_peer, succeeding_peer = predecessor(@address), successor(@address)
-    upper_bound = succeeding_peer[0]
-    lower_bound = hash(@address)
-    uri = "http://#{preceding_peer[1]}/dht/keyspace" +
-          "?lower_bound=#{lower_bound}&upper_bound=#{upper_bound}"
-    pairs = HTTParty.get(uri).body.strip.split("&").map! { |pair| pair.split("=") }
-    pairs.each { |k, v| @store[k] = v }
-  end
-
   def get_keyspace(lower_bound:, upper_bound:) # returns a chunk of the keyspace
     # this has to be O(n) in the number of keys in this node because we have to hash all of them to search the range of the keyspace
     # unless we store them in a BST?
@@ -194,6 +184,16 @@ class DHTNode
   end
 
   private
+
+  def get_keys_from_keyspace! # if a peer is added, it must ask its preceding peer for the furthest chunk of its keyspace
+    preceding_peer, succeeding_peer = predecessor(@address), successor(@address)
+    upper_bound = succeeding_peer[0]
+    lower_bound = hash(@address)
+    uri = "http://#{preceding_peer[1]}/dht/keyspace" +
+          "?lower_bound=#{lower_bound}&upper_bound=#{upper_bound}"
+    pairs = HTTParty.get(uri).body.strip.split("&").map! { |pair| pair.split("=") }
+    pairs.each { |k, v| @store[k] = v }
+  end
 
   def add_to_peers_list!(peers_list:, initialize_all: false)
     self.class.parse_peer_list(peers_list).each do |peer_address|
