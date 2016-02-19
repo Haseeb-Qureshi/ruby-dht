@@ -30,6 +30,8 @@ class DHTServer
         self.class.say_hello(request)
       elsif path == "/db"
         @node.get_local_keys
+      elsif path == "/db/all"
+        @node.get_all_keys_in_network
       elsif path =~ DB_KEY_REGEX
         @node.get_val(key: path.scan(DB_KEY_REGEX)[0][0])
       elsif path == "/dht/peers"

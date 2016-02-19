@@ -1,5 +1,6 @@
 require 'rbtree'
 require 'httparty'
+require 'zlib'
 
 class DHTNode
   attr_reader :setup_complete
@@ -23,8 +24,17 @@ class DHTNode
     @setup_complete = true
   end
 
-  def get_all_in_network
-    raise "Not yet implemented"
+  def get_all_keys_in_network
+    keys = []
+    @peers.each do |_, peer_address|
+      uri = "http://#{peer_address}/db"
+      keys << HTTParty.get(uri).strip.split("\r\n")
+    end
+    keys << @store.keys
+
+    @response.write(keys.flatten!)
+    @response.status = 200
+    @response.finish
   end
 
   def get_val(key:)
@@ -47,7 +57,7 @@ class DHTNode
   end
 
   def get_peers
-    @response.write(@peers.to_a.map(&:last).join("\r\n") + "\n")
+    @response.write(@peers.to_a.map(&:first).join("\r\n") + "\n")
     @response.status = 200
     @response.finish
   end
@@ -159,6 +169,8 @@ class DHTNode
   def route_to_node!(routing_address, method, options)
     raise "Tried to route to self!" if routing_address == @address
 
+    puts "Routing to: #{routing_address} so I can: #{method}"
+
     key = options[:key]
     key_url = "http://#{routing_address}/db/#{key}"
     case method
@@ -211,6 +223,6 @@ class DHTNode
   end
 
   def hash(key)
-    key.hash % KEY_SPACE # Ruby's Object#hash uses Murmurhash, outputs integers
+    Zlib.crc32(key) % KEY_SPACE # Ruby's Object#hash uses Murmurhash, outputs integers
   end
 end
