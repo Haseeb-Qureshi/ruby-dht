@@ -92,22 +92,23 @@ class DHTServer
 
   def self.say_hello(request)
     response = Rack::Response.new
+    uri = "http://#{request.host}:#{request.port}"
     response.write(<<-STR)
       Hi there! Welcome to my DHT server. Here's how the public API works:
 
-      initialize_dht => POST '#{request.host}:#{request.port}/dht/initialize', body => host1:port1&&host2:port2&&host3:port3
+      initialize_dht => POST '#{uri}/dht/initialize', body => host1:port1&&host2:port2&&host3:port3
 
-      get_local_keys: => GET '#{request.host}:#{request.port}/db'
-      get_val => GET '#{request.host}:#{request.port}/db/\#{key}'
-      get_all_keys: => GET '#{request.host}:#{request.port}/dht/keyspace'
+      get_local_keys: => GET '#{uri}/db'
+      get_val => GET '#{uri}/db/\#{key}'
+      get_all_keys: => GET '#{uri}/dht/keyspace'
 
-      set => PUT '#{request.host}:#{request.port}/db/\#{key}', body => \#{val}
-      delete_key => DELETE '#{request.host}:#{request.port}/db/\#{key}'
+      set => PUT '#{uri}/db/\#{key}', body => \#{val}
+      delete_key => DELETE '#{uri}/db/\#{key}'
 
-      peer_list => GET '#{request.host}:#{request.port}/dht/peers'
+      peer_list => GET '#{uri}/dht/peers'
 
-      join_dht => POST '#{request.host}:#{request.port}/dht/join', body => host1:port1&&host2:port2&&host3:port3
-      leave_dht => GET '#{request.host}:#{request.port}/dht/leave'\n
+      join_dht => POST '#{uri}/dht/join', body => host1:port1&&host2:port2&&host3:port3
+      leave_dht => GET '#{uri}/dht/leave'\n
     STR
     response.status = 200
     response.finish
